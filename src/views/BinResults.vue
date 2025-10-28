@@ -62,6 +62,12 @@ onMounted(()=>{ if(code) fetchData(code) })
         </tr>
       </tbody>
     </table>
+    <div v-else-if="!loading && !error" class="no-data">
+      未找到数据
+    </div>
+    <div v-else-if="error" class="error">
+      数据加载失败
+    </div>
     <!-- 当无数据时保持空白（按要求界面简洁） -->
   </div>
 </template>
@@ -71,4 +77,12 @@ onMounted(()=>{ if(code) fetchData(code) })
   th,td{ border:1px solid #eaeaea; padding:8px; text-align:left }
   th{ background:#f5f5f5 }
   a{ color:#1976d2 }
+  .no-data, .error {
+    text-align: center;
+    padding: 20px;
+    color: #666;
+  }
+  .error {
+    color: #f44336;
+  }
 </style>

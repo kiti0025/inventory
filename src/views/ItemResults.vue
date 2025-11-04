@@ -8,19 +8,22 @@ const results = ref([])
 const loading = ref(true)
 const error = ref('')
 
-const API_BASE = `${location.protocol}//${location.hostname}:3002`
+// 使用相对路径而不是绝对路径，提高兼容性
+const API_BASE = ''
 
 async function fetchData(itemCode){
   loading.value = true
   error.value = ''
   try{
-    const res = await fetch(`${API_BASE}/api/inventory/item/${encodeURIComponent(itemCode)}`)
+    // 使用相对路径API调用，避免跨域问题
+    const res = await fetch(`/api/inventory/item/${encodeURIComponent(itemCode)}`)
     if(!res.ok) throw new Error(`${res.status}`)
     const data = await res.json()
     results.value = data
   }catch(e){
     results.value = []
     error.value = 'error'
+    console.error('获取数据失败:', e)
   }finally{ loading.value = false }
 }
 

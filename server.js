@@ -2,21 +2,19 @@ const express = require('express');
 const sql = require('mssql');
 const cors = require('cors');
 const path = require('path');
-const fs = require('fs');
-const https = require('https');
-
 const app = express();
 const PORT = 3002;
 
-// 中间件
+// 配置中间件
 app.use(cors({
   origin: true, // 允许所有来源
   credentials: true
 }));
 app.use(express.json());
 
-// 提供前端静态文件
-app.use(express.static(path.join(__dirname, 'build')));
+// 配置静态文件服务 - 适配Vue 3 + Vite的dist目录
+const staticDir = path.join(__dirname, 'dist');
+app.use(express.static(staticDir));
 
 // 数据库配置
 const dbConfig = {
@@ -25,27 +23,48 @@ const dbConfig = {
   server: '172.16.8.203',
   database: 'XJL_151022',
   options: {
-    encrypt: false, // 根据需要设置
+    encrypt: false,
     trustServerCertificate: true // 仅在开发环境中设置为true
   }
 };
 
-// 连接数据库
-const connectDB = async () => {
+// 数据库连接池管理
+let dbPool = null;
+
+async function initializeDbPool() {
   try {
-    await sql.connect(dbConfig);
-    console.log('数据库连接成功');
+    if (!dbPool) {
+      dbPool = await sql.connect(dbConfig);
+      console.log('数据库连接成功');
+    }
+    return dbPool;
   } catch (err) {
     console.error('数据库连接失败:', err);
+    dbPool = null;
+    throw err;
   }
-};
+}
+
+// 定期检查数据库连接状态
+setInterval(async () => {
+  try {
+    const pool = await initializeDbPool();
+    await pool.request().query('SELECT 1');
+  } catch (err) {
+    console.log('数据库连接已断开，尝试重新连接...');
+    try {
+      await initializeDbPool();
+    } catch (reconnectErr) {
+      console.error('重新连接失败:', reconnectErr);
+    }
+  }
+}, 60000); // 每分钟检查一次
 
 // API路由 - 根据库位查询库存
 app.get('/api/inventory/bin/:binCode', async (req, res) => {
   try {
     const binCode = req.params.binCode;
-    
-    const pool = await sql.connect(dbConfig);
+    const pool = await initializeDbPool();
     const result = await pool.request()
       .input('BinInfoCode', sql.VarChar(50), binCode)
       .execute('usp_GetWhQohByBinCode');
@@ -61,8 +80,7 @@ app.get('/api/inventory/bin/:binCode', async (req, res) => {
 app.get('/api/inventory/item/:itemCode', async (req, res) => {
   try {
     const itemCode = req.params.itemCode;
-    
-    const pool = await sql.connect(dbConfig);
+    const pool = await initializeDbPool();
     const result = await pool.request()
       .input('ItemCode', sql.VarChar(50), itemCode)
       .execute('usp_GetWhQohByBinCode');
@@ -74,35 +92,27 @@ app.get('/api/inventory/item/:itemCode', async (req, res) => {
   }
 });
 
-// 对于其他路由，返回前端应用
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'build', 'index.html'));
-});
-
-app.get('/scan', (req, res) => {
-  res.sendFile(path.join(__dirname, 'build', 'index.html'));
-});
-
-app.get('/results/:type/:code', (req, res) => {
-  res.sendFile(path.join(__dirname, 'build', 'index.html'));
-});
-
-// 启动服务器：如果存在 cert/key 则使用 HTTPS，否则回退到 HTTP（方便本地开发）
-const keyPath = path.join(__dirname, 'key.pem')
-const certPath = path.join(__dirname, 'cert.pem')
-if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
-  const httpsOptions = {
-    key: fs.readFileSync(keyPath),
-    cert: fs.readFileSync(certPath)
-  }
-  https.createServer(httpsOptions, app).listen(PORT, () => {
-    console.log(`HTTPS服务器运行在端口 ${PORT}`);
-    connectDB();
+// Vue 3 SPA路由处理 - 确保所有路由都返回index.html
+app.get('*', (req, res) => {
+  const indexPath = path.join(staticDir, 'index.html');
+  res.sendFile(indexPath, (err) => {
+    if (err) {
+      res.status(500).send('服务器错误');
+    }
   });
-} else {
-  // fallback to HTTP for easier local testing
-  app.listen(PORT, () => {
-    console.log(`HTTP服务器运行在端口 ${PORT}（未找到 key.pem/cert.pem，已回退为 HTTP）`);
-    connectDB();
+});
+
+// 启动HTTP服务器（简化配置，避免HTTPS证书问题）
+const server = app.listen(PORT, () => {
+  console.log(`服务器运行在端口 ${PORT}`);
+  initializeDbPool();
+});
+
+// 优雅关闭处理
+process.on('SIGTERM', () => {
+  console.log('收到关闭信号，正在关闭服务器...');
+  server.close(() => {
+    console.log('服务器已关闭');
+    process.exit(0);
   });
-}
+});

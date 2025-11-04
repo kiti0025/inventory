@@ -93,7 +93,7 @@ app.get('/api/inventory/item/:itemCode', async (req, res) => {
     }
 
     const pool = await initializeDbPool();
-    // 注意：同一个存储过程，不要瞎改
+    // 注意：这里修改为料号查询专用的存储过程（根据实际情况调整名称）
     const result = await pool.request()
       .input('ItemCode', sql.VarChar(50), itemCode)
       .execute('usp_GetWhQohByBinCode'); // 修正存储过程名称

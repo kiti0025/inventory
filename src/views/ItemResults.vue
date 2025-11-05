@@ -35,6 +35,7 @@ onMounted(()=>{ if(code) fetchData(code) })
     <table v-if="results.length">
       <thead>
         <tr>
+          <th>序号</th>
           <th>客户名称</th>
           <th>料号</th>
           <th>品名</th>
@@ -48,6 +49,7 @@ onMounted(()=>{ if(code) fetchData(code) })
       </thead>
       <tbody>
         <tr v-for="(r, idx) in results" :key="idx">
+          <td>{{ idx + 1 }}</td>
           <td>{{ r.customerName }}</td>
           <td>{{ r.ItemCode }}</td>
           <td>{{ r.ItemName }}</td>

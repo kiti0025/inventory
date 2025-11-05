@@ -1,20 +1,28 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 const route = useRoute()
 const router = useRouter()
-const code = route.params.code || ''
+const code = computed(() => route.params.code || '')
 const results = ref([])
 const loading = ref(true)
 const error = ref('')
+const invalidMessage = ref('')
 
 // 使用相对路径而不是绝对路径，提高兼容性
 const API_BASE = ''
 
+function validateCode(c){
+  if(!c) return false
+  // 简单校验：非空字符串且去除空白后长度大于0；如果你有更严格规则可在此扩展
+  return typeof c === 'string' && c.trim().length > 0
+}
+
 async function fetchData(bin){
   loading.value = true
   error.value = ''
+  invalidMessage.value = ''
   try{
     // 使用相对路径API调用，避免跨域问题
     const res = await fetch(`/api/inventory/bin/${encodeURIComponent(bin)}`)
@@ -32,7 +40,31 @@ function toItem(itemCode){
   router.push({ name: 'ItemResults', params: { code: itemCode } })
 }
 
-onMounted(()=>{ if(code) fetchData(code) })
+function goBackToScan(){
+  router.push({ name: 'Scan' })
+}
+
+onMounted(()=>{
+  if(!validateCode(code.value)){
+    loading.value = false
+    invalidMessage.value = '无效的库位编码，无法查询。请返回重新扫码。'
+    return
+  }
+  fetchData(code.value)
+})
+
+// 若路由参数变化，重新处理
+watch(() => route.params.code, (newVal) => {
+  results.value = []
+  error.value = ''
+  invalidMessage.value = ''
+  if(!validateCode(newVal)){
+    loading.value = false
+    invalidMessage.value = '无效的库位编码，无法查询。请返回重新扫码。'
+    return
+  }
+  fetchData(newVal)
+})
 </script>
 
 <template>
@@ -40,6 +72,7 @@ onMounted(()=>{ if(code) fetchData(code) })
     <table v-if="results.length">
       <thead>
         <tr>
+          <th>序号</th>
           <th>客户名称</th>
           <th>料号</th>
           <th>品名</th>
@@ -53,6 +86,7 @@ onMounted(()=>{ if(code) fetchData(code) })
       </thead>
       <tbody>
         <tr v-for="(r, idx) in results" :key="idx">
+          <td>{{ idx + 1 }}</td>
           <td>{{ r.customerName }}</td>
           <td><a href="#" @click.prevent="toItem(r.ItemCode)">{{ r.ItemCode }}</a></td>
           <td>{{ r.ItemName }}</td>
@@ -67,6 +101,12 @@ onMounted(()=>{ if(code) fetchData(code) })
     </table>
     <div v-else-if="!loading && !error" class="no-data">
       未找到数据
+    </div>
+    <div v-else-if="invalidMessage" class="error">
+      {{ invalidMessage }}
+      <div style="text-align:center; margin-top:12px">
+        <button @click.prevent="goBackToScan" style="padding:8px 12px; border-radius:6px; border:none; background:#42b983; color:white">返回扫码</button>
+      </div>
     </div>
     <div v-else-if="error" class="error">
       数据加载失败

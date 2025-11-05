@@ -1,12 +1,21 @@
 <script setup>
-import { ref, onBeforeUnmount, nextTick } from 'vue'
-import { BrowserMultiFormatReader } from '@zxing/library'
+import { ref, onBeforeUnmount, nextTick, onMounted } from 'vue'
+import { Html5Qrcode } from 'html5-qrcode'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
-const codeReader = new BrowserMultiFormatReader()
 const scanning = ref(false)
-const videoRef = ref(null)
+const qrRegionId = 'html5qr-reader'
+const html5Qr = ref(null)
+const selectedCameraId = ref(null)
+const debugLog = ref([])
+
+const videoRef = ref(null) // kept for layout compatibility
+
+function pushDebug(msg){
+  debugLog.value.unshift({ time: new Date().toLocaleTimeString(), msg })
+  if(debugLog.value.length > 20) debugLog.value.length = 20
+}
 
 function parseBinFromQr(text){
   if(!text) return ''
@@ -21,60 +30,80 @@ async function startScan(){
   try{
       // 等待 DOM 更新，确保 <video> 已挂载并可用（多次尝试以应对某些移动浏览器渲染延迟）
       await nextTick()
-      // 如果 videoRef 没准备好，重试几次（每次等待 100ms）
+      // 等待挂载的扫描容器存在
       let attempts = 0
-      while(!videoRef.value && attempts < 5){
+      while(!document.getElementById(qrRegionId) && attempts < 5){
         await new Promise(r => setTimeout(r, 100))
         attempts++
       }
-      if(!videoRef.value){
-        console.error('video element not ready after retries')
+      if(!document.getElementById(qrRegionId)){
+        console.error('scan container not ready after retries')
         scanning.value = false
-        alert('摄像头预览无法初始化，请重试或检查浏览器权限/证书')
+        alert('扫码容器无法初始化，请重试或检查浏览器权限/证书')
         return
       }
-
-      await codeReader.decodeFromVideoDevice(undefined, videoRef.value, (result, err) => {
-      if(result){
-        stopScan()
-        const text = result.getText()
-        const bin = parseBinFromQr(text)
-        if(bin){
-          router.push({ name: 'BinResults', params: { code: bin } })
-        } else {
-          router.push({ name: 'BinResults', params: { code: text } })
+      // 使用 html5-qrcode
+      try{
+        const devices = await Html5Qrcode.getCameras()
+        pushDebug('cameras found: ' + (devices && devices.length ? devices.length : 0))
+        // 优先选择包含 back/rear 的 label，其次选择最后一个设备（通常为后置）
+        let camId = undefined
+        if(devices && devices.length){
+          camId = devices.find(d => /back|rear|后|后置/i.test(d.label))?.id || devices[devices.length-1].id
+          selectedCameraId.value = camId
         }
+
+        // 创建 Html5Qrcode 实例并开始扫描
+        html5Qr.value = new Html5Qrcode(qrRegionId)
+        await html5Qr.value.start(
+          camId,
+          { fps: 10, qrbox: { width: 300, height: 300 }, experimentalFeatures: { useBarCodeDetectorIfSupported: false } },
+          (decodedText, decodedResult) => {
+            // 成功回调
+            pushDebug('decoded: ' + decodedText)
+            try{
+              stopScan()
+            }catch(_){ }
+            const bin = parseBinFromQr(decodedText)
+            const codeParam = bin || decodedText
+            router.push({ name: 'BinResults', params: { code: codeParam } })
+          },
+          (errorMessage) => {
+            // decode error per frame
+            // 不打印过多信息，保留为调试
+            // pushDebug('frame error: ' + errorMessage)
+          }
+        )
+      }catch(err){
+        pushDebug('html5-qrcode start error: ' + (err && err.message ? err.message : String(err)))
+        throw err
       }
-      if(err){
-        // 常见错误会通过 err 报告，记录便于调试
-        console.debug('ZXing scan err:', err)
-      }
-    })
   }catch(e){
     scanning.value = false
     console.error('startScan error', e)
-    // 将错误显示为浏览器提示，便于快速定位权限或安全性问题
     alert('无法访问摄像头：' + (e && e.message ? e.message : e))
   }
 }
 
 function stopScan(){
   scanning.value = false
-  try{ codeReader.reset() }catch(_){}
+  try{
+    if(html5Qr.value){
+      html5Qr.value.stop().catch(()=>{}).finally(()=>{ html5Qr.value = null })
+    }
+  }catch(_){ }
 }
 
-onBeforeUnmount(()=>{ try{ codeReader.reset() }catch(_){} })
+onBeforeUnmount(()=>{ try{ if(html5Qr.value) html5Qr.value.stop() }catch(_){} })
 </script>
 
 <template>
   <div class="scan-root">
-    <!-- video 元素始终存在以确保 ref 可用；通过类控制显示 -->
-    <video ref="videoRef" :class="{ 'video-hidden': !scanning }" autoplay muted playsinline></video>
-
-    <div class="video-wrap" v-if="scanning">
-        <div class="scan-rect"></div>
-        <button class="stop-btn" @click="stopScan">停止</button>
-    </div>
+  <div class="video-wrap" v-if="scanning">
+    <div :id="qrRegionId" class="qr-reader"></div>
+    <div class="scan-rect"></div>
+    <button class="stop-btn" @click="stopScan">停止</button>
+  </div>
 
     <div v-else class="center-btn">
         <button @click="startScan">扫码</button>

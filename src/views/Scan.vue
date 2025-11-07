@@ -57,7 +57,7 @@ async function startScan(){
         html5Qr.value = new Html5Qrcode(qrRegionId)
         await html5Qr.value.start(
           camId,
-          { fps: 10, qrbox: { width: 300, height: 300 }, experimentalFeatures: { useBarCodeDetectorIfSupported: false } },
+          { fps: 100, qrbox: { width: 300, height: 300 }, experimentalFeatures: { useBarCodeDetectorIfSupported: true } },
           (decodedText, decodedResult) => {
             // 成功回调
             pushDebug('decoded: ' + decodedText)
@@ -101,8 +101,7 @@ onBeforeUnmount(()=>{ try{ if(html5Qr.value) html5Qr.value.stop() }catch(_){} })
   <div class="scan-root">
   <div class="video-wrap" v-if="scanning">
     <div :id="qrRegionId" class="qr-reader"></div>
-    <div class="scan-rect"></div>
-    <button class="stop-btn" @click="stopScan">停止</button>
+
   </div>
 
     <div v-else class="center-btn">
@@ -138,8 +137,8 @@ onBeforeUnmount(()=>{ try{ if(html5Qr.value) html5Qr.value.stop() }catch(_){} })
   .center-btn button:active {
     transform: translateY(0);
   }
-  .video-wrap{ position:relative; width:100%; max-width:420px; aspect-ratio:3/4; background:#000; border-radius:12px; overflow:hidden; box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2); }
-  video{ width:100%; max-width:420px; height:auto; aspect-ratio:3/4; object-fit:cover; border-radius:12px }
+  .video-wrap{ position:relative; width:100%; max-width:320px; aspect-ratio:3/4; background:#000; border-radius:12px; overflow:hidden; box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2); }
+  video{ width:100%; max-width:320px; height:auto; aspect-ratio:3/4; object-fit:cover; border-radius:12px }
   .video-hidden{ display:none }
   .scan-rect{ position:absolute; left:50%; top:50%; width:68%; height:28%; transform:translate(-50%,-50%); border:2px solid rgba(0,255,0,0.9); border-radius:6px; animation: scan 3s infinite linear; }
   .stop-btn{ 
